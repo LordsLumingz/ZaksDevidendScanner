@@ -1,0 +1,80 @@
+name: Scan and deploy
+
+on:
+  schedule:
+    # 10:30 UTC = 17:30 WIB, after the IDX close, Monday to Friday.
+    - cron: "30 10 * * 1-5"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scanner/**"
+      - "site/**"
+      - "config/**"
+      - "data/manual/**"
+      - ".github/workflows/scan.yml"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Week number for the statements cache
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      # Financial statements change once a quarter, so they are fetched at
+      # most once a week. Prices and dividends are fetched fresh every run.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/fundamentals
+          key: fundamentals-${{ steps.week.outputs.week }}
+          restore-keys: fundamentals-
+
+      - name: Scan the IDX universe
+        run: python -m scanner.pipeline
+
+      - name: Save today's snapshot to history
+        run: |
+          git config user.name "dividend-scanner-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history/
+          if git diff --cached --quiet; then
+            echo "No new snapshot."
+          else
+            git commit -m "Scan snapshot $(ls history/daily | sort | tail -1 | cut -d. -f1) [skip ci]"
+            for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

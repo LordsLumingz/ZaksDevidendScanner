@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IHSG Dividend Hunter</title>
+<meta name="description" content="A daily screener for IDX dividend stocks that weighs the yield against its risk. Data and scores only, not investment advice.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f766e'/%3E%3Cpath d='M8 22l6-6 4 4 6-8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <a class="brand" href="#/">
+      <span class="logo" aria-hidden="true"></span>
+      <span class="full">IHSG Dividend Hunter</span><span class="short">Dividend Hunter</span>
+    </a>
+    <nav>
+      <a href="#/">Ranking</a>
+      <a href="#/history">History</a>
+      <a href="#/method">Method</a>
+    </nav>
+  </div>
+</header>
+
+<div class="notice">
+  <div class="wrap">
+    <strong>Not investment advice.</strong>
+    This is a screener: it shows data and rule-based scores, not recommendations to buy or sell.
+    Data comes from free public feeds and can be late or wrong. Check the company's own reports before acting.
+  </div>
+</div>
+
+<main id="app" class="wrap"><p class="muted">Loading the latest scan…</p></main>
+
+<footer class="wrap foot">
+  <p id="foot-meta" class="muted"></p>
+  <p class="muted">Rules from the Dividend Scanner Framework. Thresholds are first proposals and are still being tested.
+    Prices, dividends and statements: Yahoo Finance. Bank capital ratios: banks' published reports, entered by hand.</p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

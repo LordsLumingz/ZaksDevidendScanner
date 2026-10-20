@@ -1,0 +1,58 @@
+# Scanner settings. Every threshold here is a first proposal from the
+# Dividend Scanner Framework and is meant to be tuned on real data.
+# Edit, commit, and the next daily run uses the new values.
+
+[market]
+# Benchmark ladder, in percent per year, before tax.
+# Update these by hand (source: PHEI/IBPA yield curves, LPS deposit rate).
+as_of = "2026-10-16"
+deposit_rate = 4.25      # LPS guaranteed rate for bank deposits
+sbn_10y = 7.20           # 10-year government bond (SBN) yield
+corp_aaa = 7.80          # AAA corporate bond yield
+corp_a = 8.90            # A corporate bond yield
+corp_bbb = 10.40         # BBB corporate bond yield
+inflation = 2.50         # used by the dividend growth flag
+
+[tax]
+# Indonesian final tax rates, in percent.
+dividend = 10
+deposit = 20
+bond = 10
+
+[filter1]
+# Gate 1: paid for the latest fiscal year and in at least N of the last 3.
+min_years_of_last_3 = 2
+# A dividend counts as "latest" if its ex-date is within this many months.
+latest_window_months = 15
+
+[filter2]
+payout_fail = 100        # gate 4: payout over this fails
+payout_flag = 80         # gate 4: payout from this up to fail is flagged
+earnings_drop_max = 10   # gate 6: year-to-date profit may fall at most this % vs last year
+net_debt_ebitda_flag = 3.0
+interest_cover_flag = 3.0
+payout_vs_history_flag = 1.5
+
+[bank]
+car_min = 15             # B1 gate
+npl_max = 3              # B2 flag
+npl_rise_max = 0.5       # B2 flag, percentage points in a year
+coverage_min = 150       # B3 flag
+ldr_max = 92             # B4 flag
+roe_min = 10             # B5 flag
+
+[filter3]
+# Required yield = SBN 10Y + k x 3-year annualised volatility.
+k = 0.10
+lookback_years = 3
+recovery_days_flag = 30  # median ex-date recovery longer than this is flagged
+
+[opportunity]
+drop_from_high = 20      # price down more than this % from its 1-year high
+
+[universe]
+# Yahoo Finance suffix for IDX listings.
+suffix = ".JK"
+market_index = "^JKSE"
+# Set to a number to scan only the first N tickers (handy for quick tests).
+limit = 0

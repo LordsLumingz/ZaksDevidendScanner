@@ -46,6 +46,8 @@ roe_min = 10             # B5 flag
 k = 0.10
 lookback_years = 3
 recovery_days_flag = 30  # median ex-date recovery longer than this is flagged
+# A projected after-tax yield above this is treated as a data error, not scored.
+max_plausible_yield = 40
 
 [opportunity]
 drop_from_high = 20      # price down more than this % from its 1-year high

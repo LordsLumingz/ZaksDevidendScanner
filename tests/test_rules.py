@@ -140,3 +140,32 @@ def test_ladder_after_tax():
     assert names == ["Deposit", "SBN 10Y", "AAA bond", "A bond", "BBB bond"]
     # SBN 7.20 x 0.9 = 6.48 is beaten; AAA 7.80 x 0.9 = 7.02 is not.
     assert lad["highest"] == "SBN 10Y"
+
+
+def test_projection_scales_from_dividends_actually_paid():
+    # Paid 50/share in May 2026; cash dividends paid in the 12 months to June were 60
+    # against profit 100. With a 60% average payout the projection keeps 50/share,
+    # whatever share count or currency Yahoo reports.
+    f = statements(ni=100, div_paid=60)
+    f.shares = 1e-6  # deliberately wrong
+    numbers = {"payout_history": [60.0], "ni_ttm": 100.0, "div_paid_ttm": 60.0,
+               "div_paid_end": pd.Timestamp("2026-06-30")}
+    p = rules.projection(f, prices(price=1000, dps=50), numbers, "X", None, ctx())
+    assert p["method"] == "scaled from dividends paid"
+    assert p["dps"] == pytest.approx(50.0)
+    assert p["forward_yield"] == pytest.approx(5.0)
+
+
+def test_stock_without_forward_yield_is_not_ranked():
+    checks = [rules.check("1", "Paid", "pays", "gate", "pass"), rules.check("4", "Payout", "keep", "gate", "pass"),
+              rules.check("15", "Excess yield", "risk", "gate", "nodata", None, "Cannot project next dividend")]
+    v = rules.verdict(checks, {}, {}, ctx())
+    assert v["passed"] is False and v["failed"]["id"] == "data"
+
+
+def test_implausible_forward_yield_is_not_scored():
+    p = prices(price=1000)
+    checks, risk = rules.filter3(p, {"forward_yield_after_tax": 600.0}, "Industrials", "X", ctx())
+    c = by_id(checks)["15"]
+    assert c["status"] == "nodata" and "data error" in c["detail"]
+    assert risk["sharpe"] is None

@@ -90,7 +90,12 @@ def scan(provider, cfg: dict, demo: bool = False) -> dict:
 
     prices = provider.prices(universe)
     market = provider.index_close(uc["market_index"])
-    asof = market.index.max() if len(market) else pd.Timestamp.today().normalize()
+    # The latest trading day most stocks have a close for (the index can lag a day).
+    candidates = [market.index.max()] if len(market) else []
+    last_dates = [p.close.index.max() for p in prices.values() if not p.close.empty]
+    if last_dates:
+        candidates.append(pd.Series(last_dates).mode().iloc[0])
+    asof = max(candidates) if candidates else pd.Timestamp.today().normalize()
     sectors_override = load_csv("sectors.csv")
     ctx = rules.Context(cfg=cfg, asof=asof, market_returns=m.daily_returns(market),
                         banks=load_csv("banks.csv"), policies=load_csv("policies.csv"),
@@ -177,6 +182,8 @@ def scan(provider, cfg: dict, demo: bool = False) -> dict:
     for i, c in enumerate(ranked, 1):
         c["rank"] = i
 
+    log_coverage(cards, funds)
+
     mk = cfg["market"]
     return clean({
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -195,6 +202,31 @@ def scan(provider, cfg: dict, demo: bool = False) -> dict:
         "ladder": rules.ladder(0, ctx)["rungs"],
         "stocks": sorted(cards.values(), key=lambda c: (c.get("rank") or 10**6, c["ticker"])),
     })
+
+
+def log_coverage(cards: dict, funds: dict) -> None:
+    """Print what data was available, so a run's log shows where the gaps are."""
+    from collections import Counter
+    from .providers import FRAMES
+    have = {k: sum(1 for f in funds.values() if getattr(f, k) is not None and not getattr(f, k).empty) for k in FRAMES}
+    log.info("statements present for %d stocks: %s", len(funds), have)
+    per_check: dict[str, Counter] = {}
+    for c in cards.values():
+        for ch in c.get("checks", []):
+            per_check.setdefault(ch["id"], Counter())[ch["status"] + ("+flag" if ch.get("flag") else "")] += 1
+    for cid, cnt in per_check.items():
+        log.info("check %-3s %s", cid, dict(cnt))
+    verdicts = Counter((c["verdict"]["failed"] or {}).get("name") or f"tier {c['verdict']['tier']}" for c in cards.values())
+    log.info("verdicts: %s", dict(verdicts))
+    for c in sorted((c for c in cards.values() if c.get("rank")), key=lambda c: c["rank"])[:25]:
+        p, r = c.get("projection") or {}, c.get("risk") or {}
+        log.info("#%-3s %-5s %s sharpe=%.2f fwd=%.1f%% ttm=%.1f%% payout=%s method=%s flags=%s",
+                 c["rank"], c["ticker"], c["verdict"]["tier"], r.get("sharpe") or 0,
+                 p.get("forward_yield_after_tax") or 0, c.get("trailing_yield") or 0,
+                 None if c.get("payout") is None else round(c["payout"]), p.get("method"),
+                 [f["id"] for f in c["verdict"]["flags"]])
+    nodata = [c["ticker"] for c in cards.values() if (c["verdict"]["failed"] or {}).get("name") == "Not enough data to score"]
+    log.info("not enough data to score (%d): %s", len(nodata), " ".join(sorted(nodata)[:80]))
 
 
 SNAPSHOT_FIELDS = ["ticker", "rank", "tier", "sharpe", "forward_yield_after_tax", "required_yield",

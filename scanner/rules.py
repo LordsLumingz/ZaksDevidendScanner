@@ -130,6 +130,8 @@ def statement_numbers(f: Fundamentals) -> dict:
         "interest_ttm": m.ttm(int_q) if m.ttm(int_q) is not None else m.latest(m.row(f.a_income, "Interest Expense")),
         "fcf_ttm": m.ttm(fcf_q) if m.ttm(fcf_q) is not None else m.latest(fcf_a),
         "div_paid_ttm": abs(m.ttm(div_q)) if m.ttm(div_q) is not None else (abs(m.latest(div_a)) if m.latest(div_a) is not None else None),
+        "div_paid_end": (div_q.dropna().index[0] if m.ttm(div_q) is not None
+                         else (div_a.dropna().index[0] if div_a is not None and len(div_a.dropna()) else None)),
         "div_a": div_a.abs() if div_a is not None else None,
         "gross_margin_a": (gp_a / rev_a * 100).dropna() if gp_a is not None and rev_a is not None else None,
         "debt": debt, "net_debt": net_debt,
@@ -280,7 +282,7 @@ def filter2(f: Fundamentals, prices: PriceData, ticker: str, ctx: Context) -> tu
                          f"{rat.get('rating')} outlook {rat.get('outlook') or 'n/a'}" + ("; downgrade or negative outlook in the last 12 months" if bad else "")))
 
     numbers = {"payout": None if payout in (None, float("inf")) else payout, "payout_history": hist,
-               "ni_ttm": n["ni_ttm"], "ytd": ytd, "earnings_quality_ok": not any(c["id"] == "7" and c["status"] == "flag" for c in out)}
+               "ni_ttm": n["ni_ttm"], "div_paid_ttm": n["div_paid_ttm"], "div_paid_end": n["div_paid_end"], "ytd": ytd, "earnings_quality_ok": not any(c["id"] == "7" and c["status"] == "flag" for c in out)}
     return out, numbers
 
 
@@ -351,7 +353,18 @@ def sector_compare(f: Fundamentals, n: dict, ctx: Context) -> dict:
 # ------------------------------------------------------------- projection
 
 def projection(f: Fundamentals, prices: PriceData, numbers: dict, ticker: str, fx: float | None, ctx: Context) -> dict:
-    """Projected dividend and forward yield (the Projection layer)."""
+    """Projected dividend and forward yield (the Projection layer).
+
+    Projected dividend = profit of the last 4 quarters x payout. To turn that
+    into a per-share figure without trusting Yahoo's share count or currency,
+    it is scaled from the dividend per share the company actually paid over
+    the same 12 months as its cash-flow statement:
+
+        projected DPS = DPS paid x (profit x payout) / cash dividends paid
+
+    Only when no dividend matches that window does it fall back to profit per
+    share from the share count.
+    """
     pol = ctx.policies.get(ticker) or {}
     if pol.get("payout_policy_pct"):
         payout, basis = min(float(pol["payout_policy_pct"]), 100.0), "stated policy"
@@ -360,16 +373,28 @@ def projection(f: Fundamentals, prices: PriceData, numbers: dict, ticker: str, f
         payout, basis = min(sum(hist) / len(hist), 100.0), f"{len(hist)}-year average payout"
     else:
         return {}
-    ni, shares = numbers["ni_ttm"], f.shares
+    out = {"payout_used": round(payout, 1), "payout_basis": basis}
+    ni = numbers.get("ni_ttm")
+    if not ni or ni <= 0 or prices.close.empty:
+        return out
     price = float(prices.close.iloc[-1])
-    if not ni or not shares or fx is None or ni <= 0:
-        return {"payout_used": payout, "payout_basis": basis}
-    eps = ni * fx / shares
-    dps = eps * payout / 100
+    paid, end = numbers.get("div_paid_ttm"), numbers.get("div_paid_end")
+    dps = None
+    if paid and paid > 0 and end is not None:
+        # Cash goes out about two weeks after the ex-date.
+        lag = pd.Timedelta(days=15)
+        d = prices.dividends
+        dps_paid = float(d[(d.index > end - pd.Timedelta(days=365) - lag) & (d.index <= end - lag)].sum())
+        if dps_paid > 0:
+            dps, out["method"] = dps_paid * (ni * payout / 100) / paid, "scaled from dividends paid"
+    if dps is None and f.shares and fx:
+        dps, out["method"] = ni * fx / f.shares * payout / 100, "profit per share"
+    if dps is None:
+        return out
     tax = ctx.cfg["tax"]["dividend"] / 100
     fwd = dps / price * 100
-    return {"payout_used": round(payout, 1), "payout_basis": basis, "eps": eps, "dps": dps,
-            "forward_yield": fwd, "forward_yield_after_tax": fwd * (1 - tax)}
+    out.update(dps=dps, forward_yield=fwd, forward_yield_after_tax=fwd * (1 - tax))
+    return out
 
 
 # ------------------------------------------------------------- filter 3
@@ -406,7 +431,11 @@ def filter3(prices: PriceData, proj: dict, sector: str, ticker: str, ctx: Contex
     out = []
     fwd = proj.get("forward_yield_after_tax")
     required = mk["sbn_10y"] + c3["k"] * vol if vol is not None else None
-    if fwd is None or required is None:
+    if fwd is not None and fwd > ctx.cfg["filter3"]["max_plausible_yield"]:
+        out.append(check("15", "Excess yield", "risk", "gate", "nodata", r(fwd, 2),
+                         f"Projected yield of {fwd:.0f}% after tax looks like a data error; not scored"))
+        fwd = None
+    elif fwd is None or required is None:
         out.append(check("15", "Excess yield", "risk", "gate", "nodata", r(fwd, 2),
                          "Cannot project next dividend" if fwd is None else "Not enough price history"))
     else:
@@ -445,6 +474,7 @@ def filter3(prices: PriceData, proj: dict, sector: str, ticker: str, ctx: Contex
 # ------------------------------------------------------------- verdict
 
 GATE_ORDER = ["1", "4", "5", "6", "B1", "15"]
+SCORING_GATES = ["4", "15"]
 
 
 def verdict(checks: list[dict], numbers: dict, risk: dict, ctx: Context) -> dict:
@@ -454,6 +484,12 @@ def verdict(checks: list[dict], numbers: dict, risk: dict, ctx: Context) -> dict
         if c and c["status"] == "fail":
             return {"passed": False, "tier": None, "failed": {"id": gid, "name": c["name"], "detail": c["detail"]},
                     "flags": [], "opportunity": False}
+    # A stock cannot be ranked without a payout ratio and a forward yield.
+    missing = [by_id[g] for g in SCORING_GATES if g in by_id and by_id[g]["status"] == "nodata"]
+    if missing:
+        return {"passed": False, "tier": None, "flags": [], "opportunity": False,
+                "failed": {"id": "data", "name": "Not enough data to score",
+                           "detail": "; ".join(f"{c['name']}: {c['detail']}" for c in missing)}}
     flags = [{"id": c["id"], "name": c["name"], "detail": c["detail"]} for c in checks
              if c["status"] == "flag" or c.get("flag")]
     flags += [{"id": c["id"], "name": f"No data: {c['name']}", "detail": c["detail"]}

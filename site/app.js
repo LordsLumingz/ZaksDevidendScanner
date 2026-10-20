@@ -86,7 +86,7 @@
         Yield on its own never decides the order.</p>
 
       <div class="funnel" aria-label="Scan funnel">
-        <div class="step"><div class="n">${ct.universe}</div><div class="t">IDX stocks listed</div></div>
+        <div class="step"><div class="n">${ct.universe}</div><div class="t">IDX stocks scanned</div></div>
         <div class="step"><div class="n">${ct.with_prices}</div><div class="t">with price data${ct.missing_prices ? ` (${ct.missing_prices} missing)` : ""}</div></div>
         <div class="step"><div class="n">${ct.filter1}</div><div class="t">paid recently (filter 1)</div></div>
         <div class="step"><div class="n">${ct.filter2_data}</div><div class="t">statements read (filter 2)</div></div>

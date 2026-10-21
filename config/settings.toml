@@ -43,7 +43,10 @@ roe_min = 10             # B5 flag
 
 [filter3]
 # Required yield = SBN 10Y + k x 3-year annualised volatility.
-k = 0.10
+# k = 0 (decided 2026-10-21): the forward yield after tax only has to beat
+# the SBN 10Y yield; volatility then affects the ranking (dividend Sharpe),
+# not the gate. The framework's starting value was 0.10.
+k = 0.0
 lookback_years = 3
 recovery_days_flag = 30  # median ex-date recovery longer than this is flagged
 # A projected after-tax yield above this is treated as a data error, not scored.

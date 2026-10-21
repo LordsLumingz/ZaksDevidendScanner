@@ -27,7 +27,7 @@
     { key: "tier", label: "Tier", val: (c) => c.verdict.passed ? c.verdict.tier : "Z", fmt: (c) => tierBadge(c) + (c.verdict.opportunity ? ' <span class="pill opp">Opportunity</span>' : "") },
     { key: "sharpe", label: "Div. Sharpe", num: true, val: (c) => get(c, "risk.sharpe"), fmt: (c) => num(get(c, "risk.sharpe"), 2), tip: "(forward yield after tax − SBN 10Y) ÷ volatility" },
     { key: "fwd", label: "Fwd yield (net)", num: true, val: (c) => get(c, "projection.forward_yield_after_tax"), fmt: (c) => pct(get(c, "projection.forward_yield_after_tax")), tip: "Projected next-year dividend ÷ price, after 10% tax" },
-    { key: "req", label: "Required", num: true, val: (c) => get(c, "risk.required_yield"), fmt: (c) => pct(get(c, "risk.required_yield")), tip: "SBN 10Y + k × volatility" },
+    { key: "req", label: "Required", num: true, val: (c) => get(c, "risk.required_yield"), fmt: (c) => pct(get(c, "risk.required_yield")), tip: "Forward yield after tax must beat this (SBN 10Y + k × volatility; k is set in config)" },
     { key: "ttm", label: "Trailing yield", num: true, val: (c) => c.trailing_yield, fmt: (c) => pct(c.trailing_yield), tip: "Dividends of the last 12 months ÷ price, before tax" },
     { key: "payout", label: "Payout", num: true, val: (c) => c.payout, fmt: (c) => pct(c.payout, 0) },
     { key: "beta", label: "Beta", num: true, val: (c) => get(c, "risk.beta"), fmt: (c) => num(get(c, "risk.beta"), 2), tip: "vs IHSG, 3 years of daily prices" },
@@ -104,7 +104,7 @@
           <h3>Benchmarks used</h3>
           <dl class="kv">
             <dt>SBN 10-year yield</dt><dd>${pct(mk.sbn_10y, 2)}</dd>
-            <dt>Required yield</dt><dd>SBN + ${s.settings.filter3.k} × volatility</dd>
+            <dt>Required yield</dt><dd>${s.settings.filter3.k ? `SBN + ${s.settings.filter3.k} × volatility` : "beat SBN 10Y"}</dd>
             <dt>Dividend tax</dt><dd>${s.settings.tax.dividend}%</dd>
             <dt>Benchmark rates as of</dt><dd>${esc(mk.as_of)}</dd>
           </dl>
@@ -330,7 +330,7 @@
       <ul>
         <li><b>Projected dividend</b> = profit of the last 4 quarters ÷ shares × payout (the stated policy, else the company's own recent average, capped at 100%).</li>
         <li><b>Forward yield</b> = projected dividend ÷ price, after ${s.tax.dividend}% dividend tax.</li>
-        <li><b>Required yield</b> = SBN 10Y (${mk.sbn_10y}%) + ${f3.k} × ${f3.lookback_years}-year annualised volatility. Gate: forward yield after tax must beat it.</li>
+        <li><b>Required yield</b> = ${f3.k ? `SBN 10Y (${mk.sbn_10y}%) + ${f3.k} × ${f3.lookback_years}-year annualised volatility` : `the SBN 10Y yield (${mk.sbn_10y}%)`}. Gate: forward yield after tax must beat it.${f3.k ? "" : " Volatility does not change the gate; it lowers a stock's dividend Sharpe, which sets the order."}</li>
         <li><b>Dividend Sharpe</b> = (forward yield after tax − SBN 10Y) ÷ volatility. This is the ranking number.</li>
       </ul>
       <p>Also shown: beta against IHSG and against an equal-weighted index of sector peers, maximum drawdown, the bond rung beaten after tax,

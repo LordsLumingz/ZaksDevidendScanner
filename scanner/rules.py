@@ -440,9 +440,10 @@ def filter3(prices: PriceData, proj: dict, sector: str, ticker: str, ctx: Contex
                          "Cannot project next dividend" if fwd is None else "Not enough price history"))
     else:
         ok = fwd > required
+        how = (f"SBN {mk['sbn_10y']}% + {c3['k']} x {vol:.0f}% volatility" if c3["k"]
+               else f"the SBN 10Y yield")
         out.append(check("15", "Excess yield", "risk", "gate", "pass" if ok else "fail", r(fwd, 2),
-                         f"Forward yield after tax {fwd:.1f}% vs required {required:.1f}% "
-                         f"(SBN {mk['sbn_10y']}% + {c3['k']} x {vol:.0f}% volatility)"))
+                         f"Forward yield after tax {fwd:.1f}% vs required {required:.1f}% ({how})"))
     lad = ladder(fwd, ctx) if fwd is not None else None
     out.append(check("16", "Bond ladder rung", "risk", "info", "info", lad["highest"] if lad else None,
                      f"Highest rung beaten after tax: {lad['highest']}" if lad else "No forward yield"))
